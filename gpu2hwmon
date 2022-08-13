@@ -1,0 +1,87 @@
+#!/bin/bash
+
+set -e
+
+# config file
+source /etc/gpu2hwmon.conf
+
+PWM_DIR=$( dirname $( grep -l "$SUPER_IO_NAME" /sys/class/hwmon/hwmon?/name ) )
+echo "$PWM_DIR" "$SUPER_IO_NAME"
+for GPU in ${GPU_NAME[@]}
+    do
+    GPU_DIR+=( $( ls -d /sys/bus/pci/drivers/"$GPU"/????:??:??.?/hwmon/hwmon? ) )
+    echo "${GPU_DIR[@]: -1}" "$GPU"
+done
+
+# Build indexed array of temperatures to pwm
+# where the [index] is temperature/1000
+
+PWM=0
+for TEMPERATURE in {0..110000..1000}
+    do
+    for i in "${!GPU_TEMPS[@]}"
+        do
+        if [ "$TEMPERATURE" -ge "${GPU_TEMPS[$i]}" ]
+            then
+            PWM="${GPU_AUTO_POINTS[$i]}"
+        fi
+    LOOKUP_ARRAY[${TEMPERATURE%???}]="$PWM"
+    done
+done
+
+# enable manual fan control mode
+function enable_manual_mode () {
+echo writing "$PWM_DIR"/pwm"$FAN"_enable 1
+echo "1" >"$PWM_DIR"/pwm"$FAN"_enable
+}
+
+# read initial fan mode into array
+declare -a OG_MODE
+for FAN in "${PWM_ENABLE[@]}";
+    do
+    OG_MODE=(${OG_MODE[*]} $(<"$PWM_DIR"/pwm"$FAN"_enable))
+    echo reading "$PWM_DIR"/pwm"$FAN"_enable ${OG_MODE[-1]}
+done
+
+# always try to reset fans on exit
+function reset_on_exit {
+set +e
+echo "reset on exit"
+for i in "${!PWM_ENABLE[@]}";
+    do
+    echo writing "${OG_MODE[$i]}" to "$PWM_DIR"/pwm"${PWM_ENABLE[$i]}"_enable
+    echo "${OG_MODE[$i]}" >"$PWM_DIR"/pwm"${PWM_ENABLE[$i]}"_enable
+done
+exit 1
+}
+
+trap reset_on_exit ERR INT TERM KILL
+
+while [ true ]
+    do
+    INPUT=0
+    for GPU in "${GPU_DIR[@]}"
+        do
+        for TEMP in $( ls "$GPU"/temp?_input )
+            do
+            GPU_INPUT=$(<"$TEMP")
+            if [ "$GPU_INPUT" -gt "$INPUT" ]
+                then
+                INPUT="$GPU_INPUT"
+                CONTROL="$TEMP"
+            fi
+        done
+    done
+    PWM="${LOOKUP_ARRAY[${INPUT%???}]}"
+    for FAN in "${PWM_ENABLE[@]}"
+        do
+        # Check manual mode to reset after suspend/resume
+        if [ $( <"$PWM_DIR"/pwm"$FAN"_enable ) -gt 1 ]
+            then
+            enable_manual_mode
+        fi
+    # echo "$CONTROL" "$INPUT" "$FAN" "$PWM"
+    echo "$PWM" >"$PWM_DIR"/pwm"$FAN"
+    done
+sleep 1
+done

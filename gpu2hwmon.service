@@ -1,0 +1,14 @@
+[Unit]
+Description=Gpu2hwmon service
+ConditionPathExists=/etc/gpu2hwmon.conf
+StartLimitIntervalSec=60
+StartLimitBurst=6
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/gpu2hwmon
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
