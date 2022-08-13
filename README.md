@@ -1,4 +1,6 @@
 # gpu2hwmon
+blatantly copied from https://gitlab.com/nogui/gpu2hwmon.git
+
 Control case fans proportional to hwmon temperatures.
 
 See [https://www.kernel.org/doc/html/latest/hwmon/nct6775.html](https://www.kernel.org/doc/html/latest/hwmon/nct6775.html) for supported chips. **Should** work with "Nuvoton NCT6775F, NCT6776F, and NCT6779D and compatible super I/O chips" among others.
